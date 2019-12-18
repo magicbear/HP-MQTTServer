@@ -200,7 +200,7 @@ MqttServer.on('published', function(packet, client) {
     } else if (topic == "dev")
     {
         try{ 
-            var st = JSON.parse(packet.payload.toString());
+            var st = Object.assign(devices[devid] !== undefined ? devices[devid] : {}, JSON.parse(packet.payload.toString()));
             st["timestamp"] = Math.floor(new Date().getTime() / 1000);
             for (var k in st)
             {
