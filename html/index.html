@@ -1,0 +1,539 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>HomePanel Project</title>
+    <meta name="viewport" content="minimal-ui, width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <link rel="stylesheet" type="text/css" href="jquery-ui.min.css" />
+    <style>     
+        body {
+            margin: 10px;
+            overflow: hidden;
+        }ul {
+    margin: 0;
+    list-style-type: none;
+    padding: 15px 8px 15px 15px;
+}
+
+.button{display: inline-block;
+    padding: 7px 26px 9px 26px;
+    padding: 7px 26px 6px px\0;
+    color:#666;font-size: 16px;line-height: 2;text-decoration: none;-moz-border-radius: 5px;-webkit-border-radius: 5px;-moz-box-shadow: 0 0px 3px #ddd;-webkit-box-shadow: 0 0px 3px #ddd;text-shadow: 0 0px 3px #fff;border: 1px solid #ccc;cursor: pointer;-webkit-animation-name: bluePulse;
+filter:progid:DXImageTransform.Microsoft.Gradient(GradientType=0, EndColorStr='#eeeeee', StartColorStr='#ffffff');
+background:-webkit-gradient(linear, left top, left 25, from(#FFFFFF), color-stop(100%, #eeeeee), to(#eeeeee)); background:-moz-linear-gradient(top, #FFFFFF, #eeeeee 3px, #eeeeee 15px);-webkit-animation-duration: 2s;-webkit-animation-iteration-count: infinite;
+}
+.button:hover{text-shadow: 0 0px 9px #FFF; color:#333; border:1px solid #3CF; }
+.button.close {
+    background: -webkit-gradient(linear, left top, left 25, from(#FF9999), color-stop(100%, #FF6666), to(#FF6666));
+    color: #fff;
+}
+.batteryState {
+    background: url(images/battery.png) no-repeat transparent;
+    display: inline-block;
+    width: 24px;
+    height: 32px;
+    background-size: 100px 64px;
+    vertical-align: middle;
+}
+.batteryState.charging {
+    background-position-y: -32px;
+}
+.batteryState.p90 {
+    background-position-x: -78px;
+}
+.batteryState.p60 {
+    background-position-x: -52px;
+}
+.batteryState.p30 {
+    background-position-x: -26px;
+}
+.WiFiState {
+    background: url(images/wifi-signal.png) no-repeat transparent;
+    display: inline-block;
+    width: 28px;
+    height: 32px;
+    background-size: 273px 32px;
+    vertical-align: middle;
+}
+.WiFiState.full {
+    background-position-x: -4px;
+}
+.WiFiState.p80 {
+    background-position-x: -64px;
+}
+.WiFiState.p60 {
+    background-position-x: -123px;
+}
+.WiFiState.p40 {
+    background-position-x: -181px;
+}
+.WiFiState.p20 {
+    background-position-x: -240px;
+}
+.hpled_option li {
+    zoom: 1;
+    /* overflow: hidden; */
+    height: 45px;
+    display: block;
+    vertical-align: middle;
+    position: relative;
+}
+.hpled_option .button {
+    padding: 2px 16px 4px 16px;
+    float:right;
+}
+.hpled_option b {
+    display: inline-block;
+    width: 180px;
+}
+.hpled_option .slider_value {
+    margin-left: 15px;
+    color: orange;
+}
+</style>
+</head>
+<body>
+<h1>HomePanel Project - MQTT Server</h1>
+<table cellpadding="5" cellspacing="1" bgcolor="#CCCCCC" ng-app="app" id="tbl_DevStatus" ng-controller="SensorCtrl">
+<tr bgcolor="#EFEFEF"><td>IP</td><td>Token</td><td>Model</td><td>Ver</td><td>State</td><td>Activate</td><td width="200">Status</td><td>Ctrl</td></tr>
+<tr bgcolor="#FFFFFF" ng-repeat="devdata in devices | orderBy:'band'" ng-init="k=devdata.key">
+    <td>{{dev_status[k].ip}}</td><td>{{devdata.token}}</td><td>{{dev_status[k].cls}}<br /><b>{{dev_status[k].name}}</b></td><td>{{dev_status[k].status.version}}</td>
+    <td><span ng-class="getWiFiClass(dev_status[k])"></span><span ng-if="dev_status[k].status.connected" style="color:darkgreen; font-weight:bold">Online</span><span ng-if="!dev_status[k].status.connected" style="color:red; font-weight:bold">Offline</span></td><td>{{now-dev_status[k].timestamp}}<br /><span ng-if="dev_status[k].status.boot">B {{human_ms(dev_status[k].status.boot)}}</span></td>
+    <td compile="getStatus(k, dev_status[k])"></td>
+    <td>
+        <a href="javascript:;" ng-click="configHPLED(k, dev_status[k])" class="button" style="padding: 2px 10px 2px 11px;">Config</a> 
+    <a href="javascript:;" ng-click="reboot(k,devdata)" class="button close" style="padding: 2px 10px 2px 11px;">Reboot</a> 
+    <span ng-if="dev_status[k].cls=='HP-SW'"><a href="javascript:;" ng-if="getSwitch(k, 1)" ng-click="setPower(k, 0)" class="button close" style="padding: 2px 10px 2px 11px;">Close</a>
+       "<a href="javascript:;" ng-if="getSwitch(k, 0)" ng-click="setPower(k, 1)" class="button" style="padding: 2px 10px 2px 11px;">Open</a></span>
+    </td>
+</tr>
+</table>
+
+<script type="text/javascript" src="js/angular.min.js"></script>
+<script type="text/javascript" src="js/jquery-3.4.1.min.js"></script>
+<script type="text/javascript" src="js/jquery-ui.min.js"></script>
+<script type="text/javascript">
+
+function send_action(fn, args)
+{
+    $.ajax({
+        type:"GET",
+        url:"/action",
+        dataType: "html", 
+        data: {
+            "devid": args[0],
+            "topic": args[1],
+            "payload": args[2]
+        },
+        success: function(data) {
+        }
+    });
+}
+var app = angular.module('app', [], function($compileProvider) {
+    // Configure new 'compile' directive by passing a directive
+    // factory function. The factory function injects '$compile'.
+    $compileProvider.directive('compile', function($compile) {
+      // The directive factory creates a link function.
+      return function(scope, element, attrs) {
+        scope.$watch(
+          function(scope) {
+            // Watch the 'compile' expression for changes.
+            return scope.$eval(attrs.compile);
+          },
+          function(value) {
+            // When the 'compile' expression changes
+            // assign it into the current DOM.
+            element.html(value);
+
+            // Compile the new DOM and link it to the current scope.
+            // NOTE: we only compile '.childNodes' so that we
+            // don't get into an infinite loop compiling ourselves.
+            $compile(element.contents())(scope);
+          }
+        );
+      };
+    });
+  })
+    .filter('to_trusted', ['$sce', function($sce){
+        return function(text) {
+            return $sce.trustAsHtml(text);
+        };
+    }]);;
+app.directive('slider', function() {
+  return {
+    restrict: 'A',
+      scope: {
+          ngModel: '='
+      },
+    link: function(scope, elem, attrs) {
+      return $(elem).slider({
+        range: "min",
+        animate: true,
+        value: scope.ngModel,
+        slide: function(event, ui) {
+            if (attrs.slider !== undefined)
+                scope.$parent.$eval(attrs.slider.replace(/\[value\]/g, ui.value));
+            // scope.ngModel = ui.value;
+        //     if (scope.timer !== undefined) clearTimeout(scope.timer);
+        //     scope.timer = setTimeout(function(){
+        //      scope.$parent.$eval(attrs.slider);
+        //      clearTimeout(scope.timer);
+        //      delete scope.timer;
+        //     }, 100);
+        //   return scope.$apply(function(){
+        //   });
+        },
+        stop: function(event, ui) {
+          return scope.$apply(function(){
+            scope.ngModel = ui.value;
+            if (scope.timer !== undefined) clearTimeout(scope.timer);
+            scope.timer = setTimeout(function(){
+                if (attrs.stop !== undefined)
+                    scope.$parent.$eval(attrs.stop.replace(/\[value\]/g, ui.value));
+                clearTimeout(scope.timer);
+                delete scope.timer;
+            }, 100);
+          });
+
+        }
+      });
+    }
+  };
+});
+
+app.controller('SensorCtrl',function($scope,$http) {
+    $scope.devices = [];
+    $scope.Math = Math;
+    $scope.dev_status = {};
+    $scope.now = Math.round(new Date().getTime() / 1000);
+    
+    $scope.configHPLED = function(k, dev)
+    {        
+        var objConfigDialog;
+        if ((objConfigDialog = $("#dev_HomePanel_ConfigDialog")).length == 0)
+        {
+            var objConfigDialog = $("<div id=\"dev_HomePanel_ConfigDialog\"></div>").appendTo("body");
+        }
+        objConfigDialog.empty();
+        var tabs = $("<ul class=\"hpled_option\"></ul>").appendTo(objConfigDialog);
+        var nameUpdate = $("<li><b>Name: </b><input type=\"text\" id=\"name\" /> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $(".button", nameUpdate).click(function(){
+            send_action("MQTTControl", [k, "setName", $("#name", nameUpdate).val()]);
+        });
+        $("#name", nameUpdate).val(dev.name);
+
+        var pwmMode = $("<li><b>Mode: </b><select id=\"mode\"><option value=\"0\">Non-Inverting Driver</option><option value=\"1\">Inverting Driver</option><option value=\"2\">Zero Cross Driver</option></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $(".button", pwmMode).click(function(){
+            send_action("MQTTControl", [k, "set_pwm_mode", $("#mode", this.parentNode).val()]);
+        });
+        $("#mode", pwmMode).val(dev.mode);
+
+        var pwmFreq = $("<li><b>PWM Freq: </b><div class=\"slider\" style=\"display:inline-block;width: 200px;\"></div> <span class=\"slider_value\"></span> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $(".button", pwmFreq).click(function(){
+            send_action("MQTTControl", [k, "set_pwm_freq", $(".slider", pwmFreq).slider("value")]);
+        });
+        $(".slider", pwmFreq).slider({
+            range: "min",
+            animate: true,
+            min: 1000,
+            max: 400000,
+            step: 1000,
+            value: parseInt(dev.pwm_freq),
+            slide: function(event, ui) {
+                $(".slider_value", pwmFreq).html(ui.value);
+            }
+        });
+        $(".slider_value", pwmFreq).html(dev.pwm_freq);
+
+        var pwmPin = $("<li><b>PWM Warm PIN (CH1): </b><select class=\"pin\"></select> EN: <select class=\"en\"></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $("<option value=\"0\">Disabled</option>").appendTo(".pin", pwmPin);
+        $("<option value=\"0\">Disabled</option>").appendTo(".en", pwmPin);
+        for (var i = 1; i < 32; i++) {
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo(".pin", pwmPin);
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo(".en", pwmPin);
+        }
+        $("<option value=\"101\">DAC 1</option>").appendTo(".pin", pwmPin);
+        $("<option value=\"102\">DAC 2</option>").appendTo(".pin", pwmPin);
+        $(".button", pwmPin).click(function(){
+            send_action("MQTTControl", [k, "set_pwm_pin", $(".pin", this.parentNode).val()]);
+            send_action("MQTTControl", [k, "set_en1", $(".en", this.parentNode).val()]);
+        });
+        $(".pin", pwmPin).val(dev.pin);
+        $(".en", pwmPin).val(dev.en1);
+
+        var pwmWPin = $("<li><b>PWM White PIN (CH2): </b><select class=\"pin\"></select> EN: <select class=\"en\"></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $("<option value=\"0\">Disabled</option>").appendTo(".pin", pwmWPin);
+        $("<option value=\"0\">Disabled</option>").appendTo(".en", pwmWPin);
+        for (var i = 1; i < 32; i++){
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo(".pin", pwmWPin);
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo(".en", pwmWPin);
+        }
+        $("<option value=\"101\">DAC 1</option>").appendTo(".pin", pwmWPin);
+        $("<option value=\"102\">DAC 2</option>").appendTo(".pin", pwmWPin);
+        $(".button", pwmWPin).click(function(){
+            send_action("MQTTControl", [k, "set_pwm_wpin", $(".pin", this.parentNode).val()]);
+            send_action("MQTTControl", [k, "set_en2", $(".en", this.parentNode).val()]);
+        });
+        $(".pin", pwmWPin).val(dev.wpin);
+        $(".en", pwmWPin).val(dev.en2);
+
+        var pwmRange = $("<li><b>PWM Range: </b><div class=\"slider\" style=\"display:inline-block;width: 200px;\"></div> <span class=\"slider_value\"></span> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $(".button", pwmRange).click(function(){
+            send_action("MQTTControl", [k, "set_pwm_start", $(".slider", pwmRange).slider("values")[0]]);
+            send_action("MQTTControl", [k, "set_pwm_end", $(".slider", pwmRange).slider("values")[1]]);
+        });
+        $(".slider", pwmRange).slider({
+            range: "min",
+            animate: true,
+            range: true,
+            min: 0,
+            max: dev.period,
+            values: [parseInt(dev.pwm_start),parseInt(dev.pwm_end)],
+            slide: function(event, ui) {
+                $(".slider_value", pwmRange).html(ui.values[0]+" - "+ui.values[1]);
+            }
+        });
+        $(".slider_value", pwmRange).html(dev.pwm_start+" - "+dev.pwm_end);
+
+        var startupSmooth = $("<li><b>Startup Smooth(ms): </b><div class=\"slider\" style=\"display:inline-block;width: 200px;\"></div> <span class=\"slider_value\"></span> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $(".button", startupSmooth).click(function(){
+            send_action("MQTTControl", [k, "set_startup_smooth", $(".slider", startupSmooth).slider("value")]);
+        });
+        $(".slider", startupSmooth).slider({
+            range: "min",
+            animate: true,
+            min: 0,
+            max: 10000,
+            step: 100,
+            value: parseInt(dev.startup_smooth),
+            slide: function(event, ui) {
+                $(".slider_value", startupSmooth).html(ui.value);
+            }
+        });
+        $(".slider_value", startupSmooth).html(dev.startup_smooth);
+
+        var options = $("<li><b>Options: </b><label><input type=\"checkbox\" class=\"checkbox auto_fullpower\">Align To On/Off</label> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $(".button", options).click(function(){
+            send_action("MQTTControl", [k, "set_auto_full_power", $(".auto_fullpower", options).attr("checked") ? "1" : "0"]);
+        });
+        $(".auto_fullpower", options).attr("checked", dev.auto_full_power);
+
+        objConfigDialog.dialog({
+            modal: true,
+            draggable: false,
+            "title": "Device Config",
+            "width": 640,
+            close: function() {
+                
+            }
+        });
+    }
+    $scope.getBatteryClass = function(_panel)
+    {
+        var cls = { "batteryState": true, "charging" : false };
+        var _level = $scope.getBattery(_panel);
+        if (_level === null){
+            cls['batteryState'] = false;
+            return cls;
+        }
+        cls["p"+($scope.getBatteryLevel(_panel) - $scope.getBatteryLevel(_panel)%30)] = true;
+        //(_panel.status.charging ? "  " : "")
+        return cls;
+    }
+
+    $scope.getWiFiClass = function(_panel)
+    {
+        var cls = {};
+        if (_panel.status !== undefined && _panel.status.rssi !== undefined)
+        {
+            cls['WiFiState'] = true;
+            if (_panel.status.rssi > -50)
+            {
+                cls['full'] = true;
+            } else if (_panel.status.rssi > -60)
+            {
+                cls['p80'] = true;
+            } else if (_panel.status.rssi > -70)
+            {
+                cls['p60'] = true;
+            } else if (_panel.status.rssi > -80)
+            {
+                cls['p40'] = true;
+            } else 
+            {
+                cls['p20'] = true;
+            }
+            if (_panel.status.connected !== undefined && !_panel.status.connected) cls['p20'] = true;
+        }
+        return cls;
+    }
+
+    $scope.getBattery = function(_panel)
+    {
+        if (_panel.status === undefined) return null;
+
+        var battery_threshold = {
+            "ls-batt": [ 2850, 3000],
+            "li-ion": [ 3300, 4200],
+            "li-coin": [ 2600, 3600],
+        };
+        var battery_type = null;
+        var battery_level = 0;
+        if (["SL_SC_BE_V1", "SL_SC_BG_V1", "SL_SC_BB_V1", "SL_SC_BM_V1", "SL_SC_WA_V1"].indexOf(_panel.cls) != -1)
+        {
+            battery_type = "ls-batt";
+            battery_level = _panel.status.volt_Battery * 20;
+        } else if (_panel.status.volt_Battery !== undefined)
+        {
+            battery_type = "li-ion";
+            battery_level = _panel.status.volt_Battery * 10;
+        } else if (_panel.status.battery_voltage !== undefined)
+        {
+            battery_type = "li-coin";
+            battery_level = _panel.status.battery_voltage;
+        } else if (_panel.status.voltage !== undefined)
+        {
+            battery_type = "li-coin";
+            battery_level = _panel.status.voltage;
+        }
+        if (battery_type === null) return null;
+
+        var in_min = battery_threshold[battery_type][0];
+        var in_max = battery_threshold[battery_type][1]
+
+        var rc = Math.floor((battery_level - in_min) * (100.) / (in_max - in_min));
+        if (rc < 0) return [0, battery_level];
+        if (rc > 100) return [100, battery_level];
+        return [rc,  battery_level];
+    }
+
+    $scope.getBatteryLevel = function(_panel, str)
+    {
+        var bat = $scope.getBattery(_panel);
+        if (bat === null)
+        {
+            if (str) return "";
+            return null;
+        }
+        if (str == 2) return (Math.round(bat[1] / 100)/10)+"V";
+        if (str) return bat[0]+"%";
+        return bat[0];
+    }
+
+    $scope.getSwitch = function(key, status)
+    {
+        if (typeof(key) == "undefined") return false;
+        if (dev_status[key].status.sw == status) return true;
+        return false;
+    }
+    $scope.setBright = function(key, value)
+    {
+        $("#bright_"+key).html(value);
+        send_action("MQTTControl", [key, "set_bright", value]);
+    }
+    $scope.getStatus = function(key, status)
+    {
+        // NG-Model Base => dev_status[k]
+        var ht = "";
+        if (["SL_SW_IF1_V1","SL_SW_IF2_V1","SL_SW_IF3_V1"].indexOf(status.cls) != -1)
+        {
+            if (status.status.L1 !== undefined) ht += "<b style=\"color:"+(status.status.L1 ? "green" : "red")+"\">"+(status.status.L1 ? " ON" : "OFF")+"</b> ";
+            if (status.status.L2 !== undefined) ht += "<b style=\"color:"+(status.status.L2 ? "green" : "red")+"\">"+(status.status.L2 ? " ON" : "OFF")+"</b> ";
+            if (status.status.L3 !== undefined) ht += "<b style=\"color:"+(status.status.L3 ? "green" : "red")+"\">"+(status.status.L3 ? " ON" : "OFF")+"</b> ";
+        }
+        if (["SL_SC_MHW_V4", "SL_SC_BM_V1", "lumi_motion", "lumi_sensor_motion.aq2"].indexOf(status.cls) != -1)
+        {
+            ht += "<b style=\"color:"+(status.status.motion ? "red": "black")+"\">"+(status.status.motion ? "MOTION" : "IDLE")+"</b>";
+        }
+        if (["SL_SC_THL_V5","SL_SC_BE_V1","lumi_sensor_ht"].indexOf(status.cls) != -1)
+        {
+            ht += "<b>"+(status.status.templature / 10)+"°C "+(status.status.humidity/10)+"%</b>";
+        }
+        if (["lumi_weather.v1"].indexOf(status.cls) != -1)
+        {
+            ht += "<b>"+(status.status.temperature / 100)+"°C "+(status.status.humidity/100)+"% "+(status.status.pressure/1000)+"kPa</b>";
+        }
+        if (["lumi_magnet"].indexOf(status.cls) != -1)
+        {
+            ht += "<b style=\"color:"+(status.status.status == "close" ? "green": "red")+"\">"+(status.status.status)+"</b>";
+        }
+        if (["lumi_smoke"].indexOf(status.cls) != -1)
+        {
+            ht += "<b style=\"color:"+(parseInt(status.status.alarm) ? "red": "green")+"\">"+(parseInt(status.status.alarm) ? "ALARM" : "NORMAL")+"</b>";
+        }
+        if (["HP-LEDPWM"].indexOf(status.cls) != -1)
+        {
+            ht += "<div slider=\"setBright(k,[value])\" style=\"margin:0 5px 0 5px\" ng-model=\"dev_status[k].status.bright\"></div> <b style=\"color:"+(status.status.bright > 0 ? "green": "red")+"\"><span id=\"bright_{{k}}\">"+(status.status.bright)+"</span>%"+(status.status.ct !== undefined ? " CT: "+status.status.ct : "")+"</b>";
+        }
+        return ht;
+    }
+    $scope.isOnline = function(_dev)
+    {
+        if (_dev.cls.substr(0, 4) == "SL_S" && ["SL_SC_BB_V1", "SL_SC_WA_V1"].indexOf(_dev.cls) == -1 && $scope.now - _dev.timestamp >= 14400)
+        {
+            return false;
+        }
+        return true;
+    }
+    $scope.setPower = function(key, status)
+    {
+        $.ajax({
+            type:"POST",
+            url:"action.php",
+            dataType: "html", 
+            data: {
+                "action": "MQTTControl",
+                "args": [key, "setPower", status]
+            },
+            success: function(data) {
+                
+            }
+        });
+    }
+    $scope.human_ms = function(ms)
+    {
+        var s = ms / 1000;
+        var rc = "";
+        if (s >= 3600)
+        {
+            rc += Math.floor(s / 3600)+"h";
+            s %= 3600;
+        }
+        if (s >= 60)
+        {
+            rc += Math.floor(s / 60) +"m";
+            s %= 60;
+        }
+
+        {
+            rc += Math.floor(s)+"s";
+        }
+        return rc;
+    }
+    $scope.reboot = function(key, dev)
+    {
+        send_action("MQTTControl", [key, "reboot"]);
+    }
+    timer2 = setInterval(function(){
+        $scope.$apply(function($scope){                 
+            $scope.now = Math.round(new Date().getTime() / 1000);
+            $http.get("/status").then( function(response) {
+                $scope.devices = [];
+                $scope.dev_status = response.data;
+                for (var k in $scope.dev_status)
+                {
+                    $scope.devices.push({
+                        key: k,
+                        token: k
+                    });
+                }
+            });
+        });
+    }, 1000);
+});
+</script>
+</body>
+</html>
