@@ -99,8 +99,8 @@ background:-webkit-gradient(linear, left top, left 25, from(#FFFFFF), color-stop
 <h1>HomePanel Project - MQTT Server</h1>
 <table cellpadding="5" cellspacing="1" bgcolor="#CCCCCC" ng-app="app" id="tbl_DevStatus" ng-controller="SensorCtrl">
 <tr bgcolor="#EFEFEF"><td>IP</td><td>Token</td><td>Model</td><td>Ver</td><td>State</td><td>Activate</td><td width="200">Status</td><td>Ctrl</td></tr>
-<tr bgcolor="#FFFFFF" ng-repeat="devdata in devices | orderBy:'band'" ng-init="k=devdata.key">
-    <td>{{dev_status[k].ip}}</td><td>{{devdata.token}}</td><td>{{dev_status[k].cls}}<br /><b>{{dev_status[k].name}}</b></td><td>{{dev_status[k].status.version}}</td>
+<tr bgcolor="#FFFFFF" ng-repeat="(k,dev) in dev_status">
+    <td>{{dev_status[k].ip}}</td><td>{{k}}</td><td>{{dev_status[k].cls}}<br /><b>{{dev_status[k].name}}</b></td><td>{{dev_status[k].status.version}}</td>
     <td><span ng-class="getWiFiClass(dev_status[k])"></span><span ng-if="dev_status[k].status.connected" style="color:darkgreen; font-weight:bold">Online</span><span ng-if="!dev_status[k].status.connected" style="color:red; font-weight:bold">Offline</span></td><td>{{now-dev_status[k].timestamp}}<br /><span ng-if="dev_status[k].status.boot">B {{human_ms(dev_status[k].status.boot)}}</span></td>
     <td compile="getStatus(k, dev_status[k])"></td>
     <td>
@@ -208,6 +208,7 @@ app.controller('SensorCtrl',function($scope,$http) {
     $scope.devices = [];
     $scope.Math = Math;
     $scope.dev_status = {};
+    $scope.lastUpdate = new Date().getTime();
     $scope.now = Math.round(new Date().getTime() / 1000);
     
     $scope.configHPLED = function(k, dev)
@@ -249,14 +250,14 @@ app.controller('SensorCtrl',function($scope,$http) {
         $(".slider_value", pwmFreq).html(dev.pwm_freq);
 
         var pwmPin = $("<li><b>PWM Warm PIN (CH1): </b><select class=\"pin\"></select> EN: <select class=\"en\"></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
-        $("<option value=\"0\">Disabled</option>").appendTo(".pin", pwmPin);
-        $("<option value=\"0\">Disabled</option>").appendTo(".en", pwmPin);
-        for (var i = 1; i < 32; i++) {
-            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo(".pin", pwmPin);
-            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo(".en", pwmPin);
+        $("<option value=\"0\">Disabled</option>").appendTo($(".pin", pwmPin));
+        $("<option value=\"0\">Disabled</option>").appendTo($(".en", pwmPin));
+        for (var i = 1; i < 40; i++) {
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo($(".pin", pwmPin));
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo($(".en", pwmPin));
         }
-        $("<option value=\"101\">DAC 1</option>").appendTo(".pin", pwmPin);
-        $("<option value=\"102\">DAC 2</option>").appendTo(".pin", pwmPin);
+        $("<option value=\"101\">DAC 1</option>").appendTo($(".pin", pwmPin));
+        $("<option value=\"102\">DAC 2</option>").appendTo($(".pin", pwmPin));
         $(".button", pwmPin).click(function(){
             send_action("MQTTControl", [k, "set_pwm_pin", $(".pin", this.parentNode).val()]);
             send_action("MQTTControl", [k, "set_en1", $(".en", this.parentNode).val()]);
@@ -265,14 +266,14 @@ app.controller('SensorCtrl',function($scope,$http) {
         $(".en", pwmPin).val(dev.en1);
 
         var pwmWPin = $("<li><b>PWM White PIN (CH2): </b><select class=\"pin\"></select> EN: <select class=\"en\"></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
-        $("<option value=\"0\">Disabled</option>").appendTo(".pin", pwmWPin);
-        $("<option value=\"0\">Disabled</option>").appendTo(".en", pwmWPin);
-        for (var i = 1; i < 32; i++){
-            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo(".pin", pwmWPin);
-            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo(".en", pwmWPin);
+        $("<option value=\"0\">Disabled</option>").appendTo($(".pin", pwmWPin));
+        $("<option value=\"0\">Disabled</option>").appendTo($(".en", pwmWPin));
+        for (var i = 1; i < 40; i++){
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo($(".pin", pwmWPin));
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo($(".en", pwmWPin));
         }
-        $("<option value=\"101\">DAC 1</option>").appendTo(".pin", pwmWPin);
-        $("<option value=\"102\">DAC 2</option>").appendTo(".pin", pwmWPin);
+        $("<option value=\"101\">DAC 1</option>").appendTo($(".pin", pwmWPin));
+        $("<option value=\"102\">DAC 2</option>").appendTo($(".pin", pwmWPin));
         $(".button", pwmWPin).click(function(){
             send_action("MQTTControl", [k, "set_pwm_wpin", $(".pin", this.parentNode).val()]);
             send_action("MQTTControl", [k, "set_en2", $(".en", this.parentNode).val()]);
@@ -430,6 +431,7 @@ app.controller('SensorCtrl',function($scope,$http) {
     }
     $scope.setBright = function(key, value)
     {
+        $scope.lastUpdate = new Date().getTime();
         $("#bright_"+key).html(value);
         send_action("MQTTControl", [key, "set_bright", value]);
     }
@@ -516,22 +518,27 @@ app.controller('SensorCtrl',function($scope,$http) {
     {
         send_action("MQTTControl", [key, "reboot"]);
     }
-    timer2 = setInterval(function(){
-        $scope.$apply(function($scope){                 
-            $scope.now = Math.round(new Date().getTime() / 1000);
-            $http.get("/status").then( function(response) {
-                $scope.devices = [];
-                $scope.dev_status = response.data;
-                for (var k in $scope.dev_status)
+    $scope.updateStatus = function(){
+        $http.get("/status").then( function(response) {
+            for (var k in response.data)
+            {
+                if (!$scope.dev_status[k])// || response.data[k].status.bright != $scope.dev_status[k].status.bright)
                 {
-                    $scope.devices.push({
-                        key: k,
-                        token: k
-                    });
+                    console.log(JSON.stringify(response.data[k]));
+                    console.warn(JSON.stringify($scope.dev_status[k]))
+                    $scope.dev_status[k] = response.data[k];
                 }
-            });
+            }
+        });
+    };
+    timer2 = setInterval(function(){
+        $scope.$apply(function($scope){  
+            $scope.now = Math.round(new Date().getTime() / 1000);
+            if (new Date().getTime() - $scope.lastUpdate >= 30000)
+                $scope.updateStatus();
         });
     }, 1000);
+    $scope.updateStatus();
 });
 </script>
 </body>
