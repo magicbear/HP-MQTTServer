@@ -171,6 +171,9 @@ app.directive('slider', function() {
     link: function(scope, elem, attrs) {
       return $(elem).slider({
         range: "min",
+        min: attrs.min ? parseInt(attrs.min) : 0,
+        max: attrs.max ? parseInt(attrs.max) : 100,
+        step: attrs.step ? parseInt(attrs.step) : 1,
         animate: true,
         value: scope.ngModel,
         slide: function(event, ui) {
@@ -226,9 +229,25 @@ app.controller('SensorCtrl',function($scope,$http) {
         });
         $("#name", nameUpdate).val(dev.name);
 
-        var pwmMode = $("<li><b>Mode: </b><select id=\"mode\"><option value=\"0\">Non-Inverting Driver</option><option value=\"1\">Inverting Driver</option><option value=\"2\">Zero Cross Driver</option></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        var pwmMode = $("<li><b>Mode: </b><select id=\"mode\"><option value=\"0\">Non-Inverting Driver</option><option value=\"1\">Inverting Driver</option><option value=\"2\">可控硅（上触发）</option><option value=\"3\">可控硅（下触发）</option><option value=\"4\">可控硅（边沿触发）</option></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
         $(".button", pwmMode).click(function(){
             send_action("MQTTControl", [k, "set_pwm_mode", $("#mode", this.parentNode).val()]);
+        });
+        $("#mode", pwmMode).change(function(){
+            if (this.value != 2 && this.value != 3 && this.value != 4)
+            {
+                $(".cfg_trigger_pin", tabs).hide();
+                $(".cfg_scr_delay", tabs).hide();
+                // $(".cfg_wpin", tabs).show();
+                $(".cfg_pwm_src", tabs).show();
+                $(".cfg_pin > b", tabs).html('PWM Warm PIN (CH1): ');
+            } else {
+                $(".cfg_trigger_pin", tabs).show();
+                $(".cfg_scr_delay", tabs).show();
+                // $(".cfg_wpin", tabs).hide();
+                $(".cfg_pwm_src", tabs).hide();
+                $(".cfg_pin > b", tabs).html('可控硅导通PIN: ');
+            }
         });
         $("#mode", pwmMode).val(dev.mode);
 
@@ -249,7 +268,7 @@ app.controller('SensorCtrl',function($scope,$http) {
         });
         $(".slider_value", pwmFreq).html(dev.pwm_freq);
 
-        var pwmPin = $("<li><b>PWM Warm PIN (CH1): </b><select class=\"pin\"></select> EN: <select class=\"en\"></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        var pwmPin = $("<li class=\"cfg_pin\"><b>PWM Warm PIN (CH1): </b><select class=\"pin\"></select> EN: <select class=\"en\"></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
         $("<option value=\"0\">Disabled</option>").appendTo($(".pin", pwmPin));
         $("<option value=\"0\">Disabled</option>").appendTo($(".en", pwmPin));
         for (var i = 1; i < 40; i++) {
@@ -265,7 +284,7 @@ app.controller('SensorCtrl',function($scope,$http) {
         $(".pin", pwmPin).val(dev.pin);
         $(".en", pwmPin).val(dev.en1);
 
-        var pwmWPin = $("<li><b>PWM White PIN (CH2): </b><select class=\"pin\"></select> EN: <select class=\"en\"></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        var pwmWPin = $("<li class=\"cfg_wpin\"><b>PWM White PIN (CH2): </b><select class=\"pin\"></select> EN: <select class=\"en\"></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
         $("<option value=\"0\">Disabled</option>").appendTo($(".pin", pwmWPin));
         $("<option value=\"0\">Disabled</option>").appendTo($(".en", pwmWPin));
         for (var i = 1; i < 40; i++){
@@ -280,6 +299,82 @@ app.controller('SensorCtrl',function($scope,$http) {
         });
         $(".pin", pwmWPin).val(dev.wpin);
         $(".en", pwmWPin).val(dev.en2);
+
+        var CH2Mode = $("<li class=\"cfg_pin2mode\"><b>CH2 Mode: </b><select class=\"ch2mode\"></select> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $("<option value=\"0\">Dual Color Temperature</option>").appendTo($(".ch2mode", CH2Mode));
+        $("<option value=\"1\">Dual Channel</option>").appendTo($(".ch2mode", CH2Mode));
+        $(".button", CH2Mode).click(function(){
+            send_action("MQTTControl", [k, "set_ch2mode", $(".ch2mode", this.parentNode).val()]);
+        });
+        $(".ch2mode", CH2Mode).val(dev.ch2mode);
+
+        var pwmSrcPin = $("<li class=\"cfg_pwm_src\"><b>PWM Source Pin: </b><select class=\"pin\"></select> <div class=\"slider\" style=\"display:inline-block;width: 100px;\"></div> <span class=\"slider_value\"></span> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $("<option value=\"0\">Disabled</option>").appendTo($(".pin", pwmSrcPin));
+        for (var i = 1; i < 40; i++){
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo($(".pin", pwmSrcPin));
+        }
+        $(".button", pwmSrcPin).click(function(){
+            send_action("MQTTControl", [k, "set_pwm_src", $(".pin", this.parentNode).val()]);
+            send_action("MQTTControl", [k, "set_pwm_duty", $(".slider", this.parentNode).slider("value")]);
+        });
+        $(".pin", pwmSrcPin).val(dev.pwm_src);
+        if (dev.duty !== undefined)
+        {
+            $(".slider", pwmSrcPin).slider({
+                range: "min",
+                animate: true,
+                min: 0,
+                max: 100,
+                value: parseInt(dev.duty),
+                slide: function(event, ui) {
+                    $(".slider_value", pwmSrcPin).html(ui.value);
+                }
+            });
+            $(".slider_value", pwmSrcPin).html(dev.duty);
+        }
+
+        var adcPin = $("<li class=\"cfg_adc\"><b>物理量度控制: </b><select class=\"pin\"></select> <div class=\"slider\" style=\"display:inline-block;width: 100px;\"></div> <span class=\"slider_value\"></span> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $("<option value=\"0\">Disabled</option>").appendTo($(".pin", adcPin));
+        var adcPins = [2,4,12,13,14,15,25,26,27,32,33,34,35,36,39];
+        for (var i = 0; i < adcPins.length; i++){
+            $("<option value=\""+adcPins[i]+"\">GPIO "+adcPins[i]+"</option>").appendTo($(".pin", adcPin));
+        }
+        $(".button", adcPin).click(function(){
+            send_action("MQTTControl", [k, "set_adc_pin", $(".pin", this.parentNode).val()]);
+        });
+        $(".pin", adcPin).val(dev.adc);
+
+        var pwmTriggerPin = $("<li class=\"cfg_trigger_pin\"><b>可控硅过零触发: </b><select class=\"pin\"></select> <div class=\"slider\" style=\"display:inline-block;width: 100px;\"></div> <span class=\"slider_value\"></span> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $("<option value=\"0\">Disabled</option>").appendTo($(".pin", pwmTriggerPin));
+        for (var i = 1; i < 40; i++){
+            $("<option value=\""+i+"\">GPIO "+i+"</option>").appendTo($(".pin", pwmTriggerPin));
+        }
+        $(".button", pwmTriggerPin).click(function(){
+            send_action("MQTTControl", [k, "set_pwm_trigger", $(".pin", this.parentNode).val()]);
+        });
+        if (dev.trigger_pin !== undefined)
+        {
+            $(".pin", pwmTriggerPin).val(dev.trigger_pin);
+        }
+
+        var scrDelay = $("<li class=\"cfg_scr_delay\"><b>可控硅启动延迟(µs): </b><div class=\"slider\" style=\"display:inline-block;width: 200px;\"></div> <span class=\"slider_value\"></span> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        $(".button", scrDelay).click(function(){
+            send_action("MQTTControl", [k, "set_pwm_delay", $(".slider", scrDelay).slider("value")]);
+        });
+        $(".slider", scrDelay).slider({
+            range: "min",
+            animate: true,
+            min: 0,
+            max: 10000,
+            step: 1,
+            value: dev.scr_delay !== undefined ? parseInt(dev.scr_delay) : 0,
+            slide: function(event, ui) {
+                $(".slider_value", scrDelay).html(ui.value);
+            }
+        });
+        if (dev.scr_delay !== undefined)
+            $(".slider_value", scrDelay).html(dev.scr_delay);
+        $("#mode", pwmMode).change();
 
         var pwmRange = $("<li><b>PWM Range: </b><div class=\"slider\" style=\"display:inline-block;width: 200px;\"></div> <span class=\"slider_value\"></span> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
         $(".button", pwmRange).click(function(){
@@ -316,14 +411,17 @@ app.controller('SensorCtrl',function($scope,$http) {
         });
         $(".slider_value", startupSmooth).html(dev.startup_smooth);
 
-        var options = $("<li><b>Options: </b><label><input type=\"checkbox\" class=\"checkbox auto_fullpower\">Align To On/Off</label> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
+        var options = $("<li><b>Options: </b><label><input type=\"checkbox\" class=\"checkbox auto_fullpower\">Align To On/Off</label> <label><input type=\"checkbox\" class=\"checkbox disable_autosave\">关闭自动保存</label> <a href=\"javascript:;\" class=\"button\">Update</a></li>").appendTo(tabs);
         $(".button", options).click(function(){
-            send_action("MQTTControl", [k, "set_auto_full_power", $(".auto_fullpower", options).attr("checked") ? "1" : "0"]);
+            send_action("MQTTControl", [k, "set_auto_full_power", $(".auto_fullpower", options).prop("checked") ? "1" : "0"]);
+            send_action("MQTTControl", [k, "set_autosave", $(".disable_autosave", options).prop("checked") ? "1" : "0"]);
         });
-        $(".auto_fullpower", options).attr("checked", dev.auto_full_power);
+        $(".auto_fullpower", options).prop("checked", dev.auto_full_power);
+        $(".disable_autosave", options).prop("checked", dev.no_autosave ? true : false);
 
         objConfigDialog.dialog({
             modal: true,
+            draggable: false,
             "title": "Device Config",
             "width": 640,
             close: function() {
@@ -429,11 +527,32 @@ app.controller('SensorCtrl',function($scope,$http) {
         if (dev_status[key].status.sw == status) return true;
         return false;
     }
-    $scope.setBright = function(key, value)
+    $scope.setBright = function(key)
     {
-        $scope.lastUpdate = new Date().getTime();
+        console.log("Set Bright = "+$scope.dev_status[key].status.bright);
+        send_action("MQTTControl", [key, "set_bright",$scope.dev_status[key].status.bright]);
+    }
+    $scope.setBright2 = function(key)
+    {
+        console.log("Set Bright2 = "+$scope.dev_status[key].status.bright2);
+        send_action("MQTTControl", [key, "set_ct_abx",$scope.dev_status[key].status.bright2]);
+    }
+    $scope.setCT = function(key)
+    {
+        console.log("Set Color Temperature = "+$scope.dev_status[key].status.ct);
+        send_action("MQTTControl", [key, "set_ct_abx",$scope.dev_status[key].status.ct]);
+    }
+    $scope.updateBright = function(key, value)
+    {
         $("#bright_"+key).html(value);
-        send_action("MQTTControl", [key, "set_bright", value]);
+    }
+    $scope.updateBright2 = function(key, value)
+    {
+        $("#bright2_"+key).html(value);
+    }
+    $scope.updateCT = function(key, value)
+    {
+        $("#ct_"+key).html(value);
     }
     $scope.getStatus = function(key, status)
     {
@@ -467,7 +586,11 @@ app.controller('SensorCtrl',function($scope,$http) {
         }
         if (["HP-LEDPWM"].indexOf(status.cls) != -1)
         {
-            ht += "<div slider=\"setBright(k,[value])\" style=\"margin:0 5px 0 5px\" ng-model=\"dev_status[k].status.bright\"></div> <b style=\"color:"+(status.status.bright > 0 ? "green": "red")+"\"><span id=\"bright_{{k}}\">"+(status.status.bright)+"</span>%"+(status.status.ct !== undefined ? " CT: "+status.status.ct : "")+"</b>";
+            ht += "<div slider=\"updateBright(k,[value])\" stop=\"setBright(k)\" style=\"margin:0 5px 0 5px\" ng-model=\"dev_status[k].status.bright\"></div> <b style=\"color:"+(status.status.bright > 0 ? "green": "red")+"\"><span id=\"bright_{{k}}\">"+(status.status.bright)+"</span>%</b>";
+            if (status.status.bright2 !== undefined)
+                ht += "<div slider=\"updateBright2(k,[value])\" stop=\"setBright2(k)\" style=\"margin:0 5px 0 5px\" ng-model=\"dev_status[k].status.bright2\"></div> <b style=\"color:"+(status.status.bright2 > 0 ? "green": "red")+"\"><span id=\"bright2_{{k}}\">"+(status.status.bright2)+"</span>%</b>";
+            if (status.status.ct !== undefined)
+                ht += "<div min=\"2600\" max=\"5600\" step=\"100\" slider=\"updateCT(k,[value])\" stop=\"setCT(k)\" style=\"margin:0 5px 0 5px\" ng-model=\"dev_status[k].status.ct\"></div> CT: <span id=\"ct_{{k}}\" style=\"color:green; font-weight: bold\">"+(status.status.ct)+"</span>";
         }
         return ht;
     }
